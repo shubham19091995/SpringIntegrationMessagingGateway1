@@ -1,0 +1,129 @@
+
+
+
+package com.example.demo.Config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.integration.annotation.Gateway;
+import org.springframework.integration.annotation.Router;
+import org.springframework.integration.annotation.ServiceActivator;
+import org.springframework.integration.channel.DirectChannel;
+import org.springframework.integration.config.RouterFactoryBean;
+import org.springframework.integration.dsl.IntegrationFlow;
+import org.springframework.integration.dsl.MessageChannels;
+import org.springframework.integration.dsl.RouterSpec;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+
+@Configuration
+public class RouterConfig {
+   static Map<String,ArrayList<String>> productsFlow= new HashMap<>();
+
+   static {
+       productsFlow.put("product1",new ArrayList<String>(Arrays.asList("task1","task2")));
+       productsFlow.put("product2",new ArrayList<String>(Arrays.asList("task1","task3")));
+   }
+
+   @Bean
+   public MessageChannel messageChannel(){
+       return new DirectChannel();
+   }
+
+
+    @Router(inputChannel = "entry")
+    public String router(Message<Order> orderMessage){
+
+        String productCode=orderMessage.getPayload().getProductCode();
+
+        String currentStep= orderMessage.getPayload().getStep();
+        String nextStep=null;
+        if(currentStep==null){
+            nextStep= productsFlow.get(productCode).get(0);
+        }else {
+            if((productsFlow.get(productCode).indexOf(currentStep)+1)<productsFlow.get(productCode).size()) {
+                nextStep = productsFlow.get(productCode).get(productsFlow.get(productCode).indexOf(currentStep) + 1);
+            }
+        }
+
+        return nextStep == null ? "processComplete" : nextStep;
+    }
+
+    @Bean
+    public IntegrationFlow routerFlow1() {
+        return IntegrationFlow.from("entry")
+                .route(Message.class,this::router)
+
+                .get();
+    }
+
+}
+
+
+// ----------
+
+
+package com.example.demo.Config;
+
+
+import org.springframework.integration.annotation.MessagingGateway;
+import org.springframework.integration.annotation.ServiceActivator;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.stereotype.Service;
+
+@Service
+public class theCus {
+
+    @ServiceActivator(inputChannel = "task1",outputChannel = "entry")
+    public Message<Order> placeOrder(Message<Order> order){
+        order.getPayload().setStep("task1");
+        System.out.println("Came in task1");
+        return order;
+    }
+
+
+    @ServiceActivator(inputChannel = "task2",outputChannel ="entry" )
+    public Message<Order> processOrder(Message<Order> order){
+        order.getPayload().setStep("task2");
+        System.out.println("Came in task2");
+
+        return order;
+    }
+
+
+    @ServiceActivator(inputChannel = "task3",outputChannel = "entry")
+    public void replyOrder(Message<Order> order){
+        order.getPayload().setStep("task3");
+        System.out.println("Came in task3");
+
+
+    }
+    @ServiceActivator(inputChannel = "processComplete")
+    public void processComplete(Message<Order> order){
+        order.getPayload().setStep("processComplete");
+        System.out.println("Came in processComplete");
+
+
+    }
+}
+
+
+// -----------
+
+
+         package com.example.demo.Config;
+
+import org.aspectj.weaver.ast.Or;
+import org.springframework.integration.annotation.Gateway;
+import org.springframework.messaging.Message;
+
+@org.springframework.integration.annotation.MessagingGateway
+public interface MessagingGateway {
+    @Gateway(requestChannel = "entry")
+    public void placeIt(Order order);
+}
